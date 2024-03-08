@@ -1,0 +1,60 @@
+name: Master branch workflow
+on:
+  schedule:
+    # Execute at 08:00 UTC+7 Monday to Friday
+    - cron: '0 1 * * 1-5'
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Build & Install
+        run: mvn -B install -D skipTests --no-transfer-progress
+      - name: Install Playwright
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+      - name: Run tests
+        run: xvfb-run mvn test -Dsurefire.rerunFailingTestsCount=2 -Dsurefire.suiteXmlFiles="testNG/desktop.xml"
+
+      - name: Get Allure history
+        uses: actions/checkout@v2
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Allure Report action from marketplace
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        id: allure-report
+        with:
+          allure_results: allure-results
+          allure_history: allure-history
+          keep_reports: 20
+
+      - name: Deploy report to Github Pages
+        uses: peaceiris/actions-gh-pages@v2
+        if: always()
+        env:
+          PERSONAL_TOKEN: ${{ secrets.ACTION_TOKEN }}
+          PUBLISH_BRANCH: gh-pages
+          PUBLISH_DIR: allure-history
+
+#       - name: Send email when test run Failed
+#         uses: dawidd6/action-send-mail@v3
+#         if: always()
+#         with:
+#           server_address: smtp.gmail.com
+#           server_port: 465
+#           username: ${{secrets.MAIL_ADDRESS}}
+#           password: ${{secrets.MAIL_PASSWORD}}
+#           subject: Playwright regression test results for ${{ github.repository }}
+#           body: The ${{ github.job }} job in ${{ github.workflow }} of ${{ github.repository }} has status ${{ job.status }}
+#           from: Epam Playwright
+#           to: khiem_cao@epam.com,luan_nguyen@epam.com,luan.nguyenbao@gmail.com

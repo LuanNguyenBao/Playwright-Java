@@ -1,0 +1,41 @@
+name: Product Released workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  Execute_Tests:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Build & Install
+        run: mvn -B install -D skipTests --no-transfer-progress
+      - name: Install Playwright
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+      - name: Regression testing
+        id: regression_testing
+        run: xvfb-run mvn test -Dsurefire.rerunFailingTestsCount=2 -Dsurefire.suiteXmlFiles="testNG/desktop.xml"
+      - name: Export Test Result
+        if: always()
+        run: echo ${{ steps.regression_testing.outputs.* }}
+
+  Notify_Test_Result:
+    needs: Execute_Tests
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify if failure
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{secrets.MAIL_ADDRESS}}
+          password: ${{secrets.MAIL_PASSWORD}}
+          subject: ${{ github.repository }} | Released | Regression Results
+          html_body: Dear team,</br>The ${{ github.workflow }} of ${{ github.repository }} has status <b>${{ job.status }}</b></br>Regards.
+          from: Epam VietNam POC
+          to: khiem_cao@epam.com
